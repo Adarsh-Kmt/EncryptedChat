@@ -6,35 +6,13 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/Adarsh-Kmt/EncryptedChat/helper"
 	"github.com/Adarsh-Kmt/EncryptedChat/request"
+	"github.com/Adarsh-Kmt/EncryptedChat/service"
+
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 )
-
-type HTTPError struct {
-	Status int
-	Error  any
-}
-
-type HTTPFunc func(w http.ResponseWriter, r *http.Request) *HTTPError
-
-func MakeHTTPHandlerFunc(f HTTPFunc) http.HandlerFunc {
-
-	return func(w http.ResponseWriter, r *http.Request) {
-
-		if httpError := f(w, r); httpError != nil {
-
-			WriteJSON(w, map[string]any{"error": httpError.Error}, httpError.Status)
-		}
-	}
-}
-
-func WriteJSON(w http.ResponseWriter, body any, status int) {
-
-	w.Header().Add("Content-Type", "application/json")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(body)
-}
 
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
@@ -45,22 +23,32 @@ type UserHandler struct {
 	mapMutex     *sync.RWMutex
 	userConnMap  map[string]*websocket.Conn
 	connMutexMap map[*websocket.Conn]*sync.Mutex
+	userService  *service.UserService
 }
 
-func (handler *UserHandler) muxSetup(router *mux.Router) *mux.Router {
+func NewUserHandler(service *service.UserService) *UserHandler {
 
-	router.HandleFunc("/user/register", MakeHTTPHandlerFunc(handler.RegisterUser)).Methods("POST")
-	router.HandleFunc("/user/{username}/public-key", MakeHTTPHandlerFunc(handler.GetPublicKey)).Methods("GET")
-	router.HandleFunc("/user/{username}/message", MakeHTTPHandlerFunc(handler.SendMessage))
+	return &UserHandler{
+		userService:  service,
+		mapMutex:     &sync.RWMutex{},
+		userConnMap:  make(map[string]*websocket.Conn),
+		connMutexMap: make(map[*websocket.Conn]*sync.Mutex),
+	}
+}
+func (handler *UserHandler) MuxSetup(router *mux.Router) *mux.Router {
+
+	router.HandleFunc("/user/register", helper.MakeHTTPHandlerFunc(handler.RegisterUser)).Methods("POST")
+	router.HandleFunc("/user/{username}/public-key", helper.MakeHTTPHandlerFunc(handler.GetPublicKey)).Methods("GET")
+	router.HandleFunc("/user/{username}/message", helper.MakeHTTPHandlerFunc(handler.SendMessage))
 	return router
 }
 
-func (handler *UserHandler) RegisterUser(w http.ResponseWriter, r *http.Request) *HTTPError {
+func (handler *UserHandler) RegisterUser(w http.ResponseWriter, r *http.Request) *helper.HTTPError {
 
 	return nil
 }
 
-func (handler *UserHandler) GetPublicKey(w http.ResponseWriter, r *http.Request) *HTTPError {
+func (handler *UserHandler) GetPublicKey(w http.ResponseWriter, r *http.Request) *helper.HTTPError {
 
 	return nil
 }
@@ -119,7 +107,7 @@ func (handler *UserHandler) GetConn(username string) *websocket.Conn {
 	return conn
 }
 
-func (handler *UserHandler) SendMessage(w http.ResponseWriter, r *http.Request) *HTTPError {
+func (handler *UserHandler) SendMessage(w http.ResponseWriter, r *http.Request) *helper.HTTPError {
 
 	pathVariables := mux.Vars(r)
 	username := pathVariables["username"]
@@ -127,7 +115,7 @@ func (handler *UserHandler) SendMessage(w http.ResponseWriter, r *http.Request) 
 	conn, err := upgrader.Upgrade(w, r, nil)
 
 	if err != nil {
-		return &HTTPError{Error: "error while switching protocols", Status: 500}
+		return &helper.HTTPError{Error: "error while switching protocols", Status: 500}
 	}
 
 	handler.ConnectUser(username, conn)
@@ -138,7 +126,7 @@ func (handler *UserHandler) SendMessage(w http.ResponseWriter, r *http.Request) 
 
 		if err != nil {
 			handler.DisconnectUser(username, conn)
-			return &HTTPError{Error: err.Error(), Status: 500}
+			return &helper.HTTPError{Error: err.Error(), Status: 500}
 		}
 
 		var mr request.MessageRequest
@@ -146,7 +134,7 @@ func (handler *UserHandler) SendMessage(w http.ResponseWriter, r *http.Request) 
 		if err := json.Unmarshal(message, &mr); err != nil {
 
 			handler.DisconnectUser(username, conn)
-			return &HTTPError{Error: err.Error(), Status: 500}
+			return &helper.HTTPError{Error: err.Error(), Status: 500}
 		}
 
 		toConn := handler.GetConn(mr.Username)

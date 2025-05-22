@@ -47,11 +47,33 @@ func (handler *UserHandler) MuxSetup(router *mux.Router) *mux.Router {
 
 func (handler *UserHandler) RegisterUser(w http.ResponseWriter, r *http.Request) *helper.HTTPError {
 
+	request, httpError := request.DecodeAndValidate[request.RegisterUserRequest](r)
+
+	if httpError != nil {
+		return httpError
+	}
+
+	if httpError = handler.userService.RegisterUser(&request); httpError != nil {
+		return httpError
+	}
+
+	helper.WriteJSON(w, map[string]string{"message": "account successfully created."}, 200)
 	return nil
+
 }
 
 func (handler *UserHandler) GetPublicKey(w http.ResponseWriter, r *http.Request) *helper.HTTPError {
 
+	pathVariables := mux.Vars(r)
+	username := pathVariables["username"]
+
+	publicKey, httpError := handler.userService.GetPublicKey(username)
+
+	if httpError != nil {
+		return httpError
+	}
+
+	helper.WriteJSON(w, map[string]any{"public_key": publicKey}, 200)
 	return nil
 }
 

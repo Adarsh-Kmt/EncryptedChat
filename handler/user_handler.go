@@ -40,6 +40,8 @@ func (handler *UserHandler) MuxSetup(router *mux.Router) *mux.Router {
 	router.HandleFunc("/user/register", helper.MakeHTTPHandlerFunc(handler.RegisterUser)).Methods("POST")
 	router.HandleFunc("/user/{username}/public-key", helper.MakeHTTPHandlerFunc(handler.GetPublicKey)).Methods("GET")
 	router.HandleFunc("/user/{username}/message", helper.MakeHTTPHandlerFunc(handler.SendMessage))
+	router.HandleFunc("/user/online", helper.MakeHTTPHandlerFunc(handler.GetOnlineUsers)).Methods("GET")
+
 	return router
 }
 
@@ -75,6 +77,19 @@ func (handler *UserHandler) DisconnectUser(username string, conn *websocket.Conn
 	}
 }
 
+func (handler *UserHandler) GetAllOnlineUsers() []string {
+
+	handler.mapMutex.RLock()
+	defer handler.mapMutex.RUnlock()
+
+	onlineUsers := make([]string, 0)
+
+	for username, _ := range handler.userConnMap {
+		onlineUsers = append(onlineUsers, username)
+	}
+
+	return onlineUsers
+}
 func (handler *UserHandler) WriteMessage(conn *websocket.Conn, message string) error {
 
 	handler.mapMutex.RLock()
@@ -152,4 +167,13 @@ func (handler *UserHandler) SendMessage(w http.ResponseWriter, r *http.Request) 
 
 	}
 
+}
+
+func (handler *UserHandler) GetOnlineUsers(w http.ResponseWriter, r *http.Request) *helper.HTTPError {
+
+	onlineUsers := handler.GetAllOnlineUsers()
+
+	helper.WriteJSON(w, map[string]any{"online_users": onlineUsers}, 200)
+
+	return nil
 }
